@@ -49,6 +49,7 @@ import type TouchZoomRotateHandler from './handler/touch_zoom_rotate';
 import defaultLocale from './default_locale';
 import type {TaskID} from '../util/task_queue';
 import type {Cancelable} from '../types/cancelable';
+import type {CssTransforms} from '../util/util';
 import type {
     LayerSpecification,
     FilterSpecification,
@@ -100,7 +101,8 @@ type MapOptions = {
     maxTileCacheSize?: number,
     transformRequest?: RequestTransformFunction,
     accessToken: string,
-    locale?: Object
+    locale?: Object,
+    cssTransforms?: CssTransforms,
 };
 
 const defaultMinZoom = -2;
@@ -147,7 +149,11 @@ const defaultOptions = {
     transformRequest: null,
     accessToken: null,
     fadeDuration: 300,
-    crossSourceCollisions: true
+    crossSourceCollisions: true,
+
+    cssTransforms: {
+        scale: 1
+    }
 };
 
 /**
@@ -237,6 +243,7 @@ const defaultOptions = {
  *   Expected to return an object with a `url` property and optionally `headers` and `credentials` properties.
  * @param {boolean} [options.collectResourceTiming=false] If `true`, Resource Timing API information will be collected for requests made by GeoJSON and Vector Tile web workers (this information is normally inaccessible from the main Javascript thread). Information will be returned in a `resourceTiming` property of relevant `data` events.
  * @param {number} [options.fadeDuration=300] Controls the duration of the fade-in/fade-out animation for label collisions, in milliseconds. This setting affects all symbol layers. This setting does not affect the duration of runtime styling transitions or raster tile cross-fading.
+ * @param {Object} [options.cssTransforms] If provided will transform event hander Points appropriately.
  * @param {boolean} [options.crossSourceCollisions=true] If `true`, symbols from multiple sources can collide with each other during collision detection. If `false`, collision detection is run separately for the symbols in each source.
  * @param {string} [options.accessToken=null] If specified, map will use this token instead of the one defined in mapboxgl.accessToken.
  * @param {string} [options.locale=null] A patch to apply to the default localization table for UI strings, e.g. control tooltips. The `locale` object maps namespaced UI string IDs to translated strings in the target language; see `src/ui/default_locale.js` for an example with all supported string IDs. The object may specify all UI strings (thereby adding support for a new translation) or only a subset of strings (thereby patching the default translation table).
@@ -301,6 +308,7 @@ class Map extends Camera {
     _localIdeographFontFamily: string;
     _requestManager: RequestManager;
     _locale: Object;
+    _cssTransforms: ?CssTransforms;
 
     /**
      * The map's {@link ScrollZoomHandler}, which implements zooming in and out with a scroll wheel or trackpad.
@@ -387,6 +395,7 @@ class Map extends Camera {
         this._locale = extend({}, defaultLocale, options.locale);
 
         this._requestManager = new RequestManager(options.transformRequest, options.accessToken);
+        this._cssTransforms = options.cssTransforms;
 
         if (typeof options.container === 'string') {
             this._container = window.document.getElementById(options.container);
@@ -1202,6 +1211,17 @@ class Map extends Camera {
     }
 
     /**
+     * Updates the CSS transforms applied to the map when calculating Point
+     * locations
+     *
+     * @param {Object} cssTransforms object of CSS transform properties
+     * @param {string|number} cssTransforms.scale the CSS scale
+     */
+    setCssTransforms(cssTransforms: CssTransforms) {
+        this._cssTransforms = cssTransforms;
+    }
+
+    /**
      * Updates the map's Mapbox style object with a new value.
      *
      * If a style is already set when this is used and options.diff is set to true, the map renderer will attempt to compare the given style
@@ -1209,7 +1229,6 @@ class Map extends Camera {
      * (images used for icons and patterns) and glyphs (fonts for label text) **cannot** be diffed. If the sprites or fonts used in the current
      * style and the given style are different in any way, the map renderer will force a full update, removing the current style and building
      * the given one from scratch.
-     *
      *
      * @param style A JSON object conforming to the schema described in the
      *   [Mapbox Style Specification](https://mapbox.com/mapbox-gl-style-spec/), or a URL to such JSON.
